@@ -53,9 +53,59 @@ class UniversalI18nManagerGTK(Gtk.Application):
             "lbl_ok": "■ OK", "lbl_dup": "■ DUP", "lbl_ghost": "■ GHOST",
             "col_key": "SYSTEM KEY", "col_source": "SOURCE (MASTER)", "col_trans": "TRANSLATION",
             "msg_restart": "Restart app to apply changes.", "lbl_ui_lang": "UI Lang:",
-            "win_select_title": "Select Target", "btn_load": "Load Selected", "btn_create_new": "Create New"
+            "win_select_title": "Select Target", "btn_load": "Load Selected", "btn_create_new": "Create New",
+            "lbl_project_configuration": "⚙️ Project Configuration",
+            "lbl_project_setup": "⚙️ Project Setup",
+            "lbl_master_json_file": "Master JSON File:",
+            "btn_browse_file": "Browse File...",
+            "lbl_source_code_directory": "Source Code Directory:",
+            "btn_browse_folder": "Browse Folder...",
+            "lbl_extensions": "Extensions (comma separated):",
+            "btn_apply_project": "🚀 Load & Initialize Project",
+            "lbl_target_translations": "📄 Target Translations",
+            "btn_new_lang": "➕ New Lang",
+            "btn_change_config": "⚙️ Change Config",
+            "btn_add_key": "➕ Add Key",
+            "btn_del_key": "🗑️ Del Key",
+            "lbl_source_header": "🌍 Source: {file}",
+            "lbl_source_list_item": "🌍 {file} (source)",
+            "lbl_target_list_item": "🌐 {name}",
+            "title_language": "Language",
+            "title_error": "Error",
+            "title_info": "Info",
+            "title_ok": "OK",
+            "msg_invalid_master_path": "Master JSON file path is invalid or empty!",
+            "msg_invalid_master_json": "Invalid Master JSON: {error}",
+            "msg_switch_to_source_add": "Switch to the source file before adding a new translation key.",
+            "msg_switch_to_source_delete": "Switch to the source file before deleting a key.",
+            "msg_key_cannot_be_empty": "Key cannot be empty.",
+            "msg_key_already_exists": "This key already exists in the source file.",
+            "msg_key_not_found": "Key not found in source file.",
+            "msg_saved_successfully": "Saved successfully!",
+            "title_add_key": "Add Key to Source",
+            "lbl_new_key": "New key:",
+            "ph_new_key": "e.g. welcome_message",
+            "lbl_source_value": "Source value:",
+            "ph_source_value": "e.g. Welcome!",
+            "ph_delete_key": "e.g. obsolete_message",
+            "btn_create_key": "Create Key",
+            "title_delete_key": "Delete Source Key",
+            "lbl_key_to_delete": "Key to delete:",
+            "btn_delete_key": "Delete Key",
+            "title_new_translation": "New Translation",
+            "ph_new_translation": "e.g. pl",
+            "btn_create": "Create",
+            "win_inspect_search": "Search: {key}",
+            "win_select_master": "Select MASTER JSON",
+            "win_select_source": "Select Source Folder",
+            "lbl_editing": "Editing: {name}{source_suffix}",
+            "lbl_source_suffix": " (source)"
         }
         
+        def _t(key, fallback=None):
+            return self.ui.get(key, fallback if fallback is not None else key)
+        self._t = _t
+
         en_path = os.path.join(self.internal_lang_dir, "en.json")
         if not os.path.exists(en_path):
             with open(en_path, 'w', encoding='utf-8') as f: 
@@ -125,29 +175,29 @@ class UniversalI18nManagerGTK(Gtk.Application):
         # 1. WIDOK FORMULARZA (Gdy projekt nie jest ustawiony)
         form_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         
-        lbl_setup = Gtk.Label(label="⚙️ Project Configuration", xalign=0)
-        lbl_setup.set_markup('<span weight="bold" size="large">⚙️ Project Setup</span>')
+        lbl_setup = Gtk.Label(label=self.ui.get("lbl_project_configuration", "⚙️ Project Configuration"), xalign=0)
+        lbl_setup.set_markup(f'<span weight="bold" size="large">{self.ui.get("lbl_project_setup", "⚙️ Project Setup")}</span>')
         form_box.append(lbl_setup)
 
-        form_box.append(Gtk.Label(label="Master JSON File:", xalign=0))
+        form_box.append(Gtk.Label(label=self.ui.get("lbl_master_json_file", "Master JSON File:"), xalign=0))
         self.ent_master_path = Gtk.Entry(text=self.master_file)
         form_box.append(self.ent_master_path)
-        btn_browse_master = Gtk.Button(label="Browse File...")
+        btn_browse_master = Gtk.Button(label=self.ui.get("btn_browse_file", "Browse File..."))
         btn_browse_master.connect("clicked", self.on_browse_master)
         form_box.append(btn_browse_master)
 
-        form_box.append(Gtk.Label(label="Source Code Directory:", xalign=0))
+        form_box.append(Gtk.Label(label=self.ui.get("lbl_source_code_directory", "Source Code Directory:"), xalign=0))
         self.ent_src_path = Gtk.Entry(text=self.scripts_dir)
         form_box.append(self.ent_src_path)
-        btn_browse_src = Gtk.Button(label="Browse Folder...")
+        btn_browse_src = Gtk.Button(label=self.ui.get("btn_browse_folder", "Browse Folder..."))
         btn_browse_src.connect("clicked", self.on_browse_src)
         form_box.append(btn_browse_src)
 
-        form_box.append(Gtk.Label(label="Extensions (comma separated):", xalign=0))
+        form_box.append(Gtk.Label(label=self.ui.get("lbl_extensions", "Extensions (comma separated):"), xalign=0))
         self.ent_extensions = Gtk.Entry(text=",".join(self.extensions))
         form_box.append(self.ent_extensions)
 
-        btn_apply_project = Gtk.Button(label="🚀 Load & Initialize Project")
+        btn_apply_project = Gtk.Button(label=self.ui.get("btn_apply_project", "🚀 Load & Initialize Project"))
         btn_apply_project.add_css_class("suggested-action")
         btn_apply_project.connect("clicked", self.on_apply_project_form)
         form_box.append(btn_apply_project)
@@ -156,8 +206,8 @@ class UniversalI18nManagerGTK(Gtk.Application):
 
         # 2. WIDOK LISTY (Gdy projekt jest poprawnie wczytany)
         list_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        lbl_sidebar = Gtk.Label(label="📄 Target Translations", xalign=0)
-        lbl_sidebar.set_markup('<span weight="bold">📄 Target Translations</span>')
+        lbl_sidebar = Gtk.Label(label=self.ui.get("lbl_target_translations", "📄 Target Translations"), xalign=0)
+        lbl_sidebar.set_markup(f'<span weight="bold">{self.ui.get("lbl_target_translations", "📄 Target Translations")}</span>')
         list_box.append(lbl_sidebar)
 
         self.source_version_label = Gtk.Label(label="", xalign=0)
@@ -175,11 +225,11 @@ class UniversalI18nManagerGTK(Gtk.Application):
         list_box.append(scroll_sidebar)
 
         action_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
-        btn_new_target = Gtk.Button(label="➕ New Lang")
+        btn_new_target = Gtk.Button(label=self.ui.get("btn_new_lang", "➕ New Lang"))
         btn_new_target.connect("clicked", lambda b: self._create_new_target())
         action_buttons.append(btn_new_target)
 
-        btn_edit_config = Gtk.Button(label="⚙️ Change Config")
+        btn_edit_config = Gtk.Button(label=self.ui.get("btn_change_config", "⚙️ Change Config"))
         btn_edit_config.connect("clicked", lambda b: self.sidebar_stack.set_visible_child_name("form"))
         action_buttons.append(btn_edit_config)
         list_box.append(action_buttons)
@@ -209,27 +259,27 @@ class UniversalI18nManagerGTK(Gtk.Application):
         sort_box.append(self.sort_dropdown)
         filter_bar.append(sort_box)
 
-        btn_add_key = Gtk.Button(label="➕ Add Key")
+        btn_add_key = Gtk.Button(label=self.ui.get("btn_add_key", "➕ Add Key"))
         btn_add_key.connect("clicked", self.on_add_key)
         filter_bar.append(btn_add_key)
 
-        btn_del_key = Gtk.Button(label="🗑️ Del Key")
+        btn_del_key = Gtk.Button(label=self.ui.get("btn_del_key", "🗑️ Del Key"))
         btn_del_key.connect("clicked", self.on_del_key)
         filter_bar.append(btn_del_key)
 
         legend_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         legend_box.append(Gtk.Label(label=self.ui.get("lbl_legend", "Legend:")))
         
-        lbl_ok = Gtk.Label(); lbl_ok.set_markup('<span foreground="#2980b9" weight="bold">■ OK</span>')
-        lbl_dup = Gtk.Label(); lbl_dup.set_markup('<span foreground="#e74c3c" weight="bold">■ DUP</span>')
-        lbl_ghost = Gtk.Label(); lbl_ghost.set_markup('<span foreground="#e67e22" weight="bold">■ GHOST</span>')
+        lbl_ok = Gtk.Label(); lbl_ok.set_markup(f'<span foreground="#2980b9" weight="bold">{self.ui.get("lbl_ok", "■ OK")}</span>')
+        lbl_dup = Gtk.Label(); lbl_dup.set_markup(f'<span foreground="#e74c3c" weight="bold">{self.ui.get("lbl_dup", "■ DUP")}</span>')
+        lbl_ghost = Gtk.Label(); lbl_ghost.set_markup(f'<span foreground="#e67e22" weight="bold">{self.ui.get("lbl_ghost", "■ GHOST")}</span>')
         
         legend_box.append(lbl_ok)
         legend_box.append(lbl_dup)
         legend_box.append(lbl_ghost)
         filter_bar.append(legend_box)
 
-        self.status_label = Gtk.Label(label="...", xalign=1)
+        self.status_label = Gtk.Label(label=self.ui.get("lbl_status_idle", "..."), xalign=1)
         self.status_label.set_hexpand(True)
         filter_bar.append(self.status_label)
 
@@ -249,7 +299,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
         selected_text = self.available_langs[dropdown.get_selected()]
         self.config['PROJ']['ui_lang'] = selected_text
         with open(self.config_file, 'w') as f: self.config.write(f)
-        self.show_message("Language", self.ui.get("msg_restart", "Restart app to apply!"))
+        self.show_message(self.ui.get("title_language", "Language"), self.ui.get("msg_restart", "Restart app to apply!"))
 
     def on_sort_change(self, dropdown, pspec):
         mapping = ["key", "source", "target"]
@@ -258,7 +308,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
 
     # Obsługa przeglądania plików bezpośrednio z formularza bocznego
     def on_browse_master(self, btn):
-        dialog = Gtk.FileDialog(title="Select MASTER JSON")
+        dialog = Gtk.FileDialog(title=self.ui.get("win_select_master", "Select MASTER JSON"))
         file_filter = Gtk.FileFilter()
         file_filter.set_name("JSON files")
         file_filter.add_suffix("json")
@@ -274,7 +324,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
         except: pass
 
     def on_browse_src(self, btn):
-        dialog = Gtk.FileDialog(title="Select Source Folder")
+        dialog = Gtk.FileDialog(title=self.ui.get("win_select_source", "Select Source Folder"))
         dialog.select_folder(self.window, None, self._on_src_chosen)
 
     def _on_src_chosen(self, dialog, result):
@@ -290,7 +340,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
         exts = self.ent_extensions.get_text().strip()
 
         if not m_file or not os.path.exists(m_file):
-            self.show_message("Error", "Master JSON file path is invalid or empty!")
+            self.show_message(self.ui.get("title_error", "Error"), self.ui.get("msg_invalid_master_path", "Master JSON file path is invalid or empty!"))
             return
 
         self.config['PROJ'].update({'master_file': m_file, 'scripts_dir': s_dir, 'extensions': exts})
@@ -310,7 +360,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
             with open(self.master_file, 'r', encoding='utf-8') as f: 
                 self.data_source = json.load(f)
         except Exception as e:
-            self.show_message("Error", f"Invalid Master JSON: {e}")
+            self.show_message(self.ui.get("title_error", "Error"), self.ui.get("msg_invalid_master_json", "Invalid Master JSON: {error}").format(error=e))
             self.sidebar_stack.set_visible_child_name("form")
             return
         
@@ -321,11 +371,11 @@ class UniversalI18nManagerGTK(Gtk.Application):
             self.sidebar_listbox.remove(self.sidebar_listbox.get_first_child())
 
         self.source_version_label.set_markup(
-            f'<span foreground="#2980b9" weight="bold">🌍 Source: {os.path.basename(self.master_file)}</span>'
+            f'<span foreground="#2980b9" weight="bold">{self.ui.get("lbl_source_header", "🌍 Source: {file}").format(file=os.path.basename(self.master_file))}</span>'
         )
 
         source_row = Gtk.ListBoxRow()
-        source_lbl = Gtk.Label(label=f"🌍 {os.path.basename(self.master_file)} (source)", xalign=0)
+        source_lbl = Gtk.Label(label=self.ui.get("lbl_source_list_item", "🌍 {file} (source)").format(file=os.path.basename(self.master_file)), xalign=0)
         source_lbl.set_margin_top(5)
         source_lbl.set_margin_bottom(5)
         source_lbl.set_margin_start(5)
@@ -337,7 +387,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
 
         for t in targets:
             row = Gtk.ListBoxRow()
-            lbl = Gtk.Label(label=f"🌐 {t}", xalign=0)
+            lbl = Gtk.Label(label=self.ui.get("lbl_target_list_item", "🌐 {name}").format(name=t), xalign=0)
             lbl.set_margin_top(5)
             lbl.set_margin_bottom(5)
             lbl.set_margin_start(5)
@@ -365,10 +415,10 @@ class UniversalI18nManagerGTK(Gtk.Application):
 
     def on_add_key(self, btn):
         if self.active_path != self.master_file:
-            self.show_message("Info", "Switch to the source file before adding a new translation key.")
+            self.show_message(self.ui.get("title_info", "Info"), self.ui.get("msg_switch_to_source_add", "Switch to the source file before adding a new translation key."))
             return
 
-        win = Gtk.Window(title="Add Key to Source")
+        win = Gtk.Window(title=self.ui.get("title_add_key", "Add Key to Source"))
         win.set_default_size(360, 180)
         win.set_transient_for(self.window)
         win.set_modal(True)
@@ -376,25 +426,25 @@ class UniversalI18nManagerGTK(Gtk.Application):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         box.set_margin_top(12); box.set_margin_bottom(12); box.set_margin_start(12); box.set_margin_end(12)
 
-        box.append(Gtk.Label(label="New key:"))
+        box.append(Gtk.Label(label=self.ui.get("lbl_new_key", "New key:")))
         key_entry = Gtk.Entry()
-        key_entry.set_placeholder_text("e.g. welcome_message")
+        key_entry.set_placeholder_text(self.ui.get("ph_new_key", "e.g. welcome_message"))
         box.append(key_entry)
 
-        box.append(Gtk.Label(label="Source value:"))
+        box.append(Gtk.Label(label=self.ui.get("lbl_source_value", "Source value:")))
         value_entry = Gtk.Entry()
-        value_entry.set_placeholder_text("e.g. Welcome!")
+        value_entry.set_placeholder_text(self.ui.get("ph_source_value", "e.g. Welcome!"))
         box.append(value_entry)
 
-        btn_create = Gtk.Button(label="Create Key")
+        btn_create = Gtk.Button(label=self.ui.get("btn_create_key", "Create Key"))
         def on_create_clicked(button):
             new_key = key_entry.get_text().strip()
             source_value = value_entry.get_text().strip()
             if not new_key:
-                self.show_message("Error", "Key cannot be empty.")
+                self.show_message(self.ui.get("title_error", "Error"), self.ui.get("msg_key_cannot_be_empty", "Key cannot be empty."))
                 return
             if new_key in self.data_source:
-                self.show_message("Error", "This key already exists in the source file.")
+                self.show_message(self.ui.get("title_error", "Error"), self.ui.get("msg_key_already_exists", "This key already exists in the source file."))
                 return
 
             self.data_source[new_key] = source_value
@@ -411,10 +461,10 @@ class UniversalI18nManagerGTK(Gtk.Application):
 
     def on_del_key(self, btn):
         if self.active_path != self.master_file:
-            self.show_message("Info", "Switch to the source file before deleting a key.")
+            self.show_message(self.ui.get("title_info", "Info"), self.ui.get("msg_switch_to_source_delete", "Switch to the source file before deleting a key."))
             return
 
-        win = Gtk.Window(title="Delete Source Key")
+        win = Gtk.Window(title=self.ui.get("title_delete_key", "Delete Source Key"))
         win.set_default_size(360, 140)
         win.set_transient_for(self.window)
         win.set_modal(True)
@@ -422,19 +472,17 @@ class UniversalI18nManagerGTK(Gtk.Application):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         box.set_margin_top(12); box.set_margin_bottom(12); box.set_margin_start(12); box.set_margin_end(12)
 
-        box.append(Gtk.Label(label="Key to delete:"))
+        box.append(Gtk.Label(label=self.ui.get("lbl_key_to_delete", "Key to delete:")))
         key_entry = Gtk.Entry()
-        key_entry.set_placeholder_text("e.g. obsolete_message")
+        key_entry.set_placeholder_text(self.ui.get("ph_delete_key", "e.g. obsolete_message"))
         box.append(key_entry)
 
-        btn_delete = Gtk.Button(label="Delete Key")
+        btn_delete = Gtk.Button(label=self.ui.get("btn_delete_key", "Delete Key"))
         def on_delete_clicked(button):
             key_to_delete = key_entry.get_text().strip()
             if not key_to_delete:
-                self.show_message("Error", "Key cannot be empty.")
-                return
-            if key_to_delete not in self.data_source:
-                self.show_message("Error", "Key not found in source file.")
+                self.show_message(self.ui.get("title_error", "Error"), self.ui.get("msg_key_cannot_be_empty", "Key cannot be empty."))
+                self.show_message(self.ui.get("title_error", "Error"), self.ui.get("msg_key_not_found", "Key not found in source file."))
                 return
 
             self.data_source.pop(key_to_delete, None)
@@ -466,15 +514,15 @@ class UniversalI18nManagerGTK(Gtk.Application):
                 self._save_json(path, target_data)
 
     def _create_new_target(self):
-        win_input = Gtk.Window(title="New Translation")
+        win_input = Gtk.Window(title=self.ui.get("title_new_translation", "New Translation"))
         win_input.set_default_size(300, 100)
         win_input.set_transient_for(self.window)
         win_input.set_modal(True)
         
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         box.set_margin_top(10); box.set_margin_bottom(10); box.set_margin_start(10); box.set_margin_end(10)
-        entry = Gtk.Entry(placeholder_text="e.g. pl")
-        btn = Gtk.Button(label="Create")
+        entry = Gtk.Entry(placeholder_text=self.ui.get("ph_new_translation", "e.g. pl"))
+        btn = Gtk.Button(label=self.ui.get("btn_create", "Create"))
         
         def on_create_click(b):
             new_name = entry.get_text().strip()
@@ -532,7 +580,13 @@ class UniversalI18nManagerGTK(Gtk.Application):
         
         active_name = os.path.basename(self.target_path) if self.target_path else 'None'
         self.status_label.set_text(
-            f"Editing: {active_name} {'(source)' if self.target_path == self.master_file else ''}"
+            self.ui.get(
+                "lbl_editing",
+                "Editing: {name}{source_suffix}"
+            ).format(
+                name=active_name,
+                source_suffix=self.ui.get("lbl_source_suffix", " (source)") if self.target_path == self.master_file else ""
+            )
         )
         
         items = [{"key": k, "source": str(v), "target": str(self.data_target.get(k, ""))} 
@@ -618,7 +672,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
                                         found.append(f"{file} (Line {i}): {line.strip()}")
                         except: continue
                         
-        win_inspect = Gtk.Window(title=f"Search: {key}")
+        win_inspect = Gtk.Window(title=self.ui.get("win_inspect_search", "Search: {key}").format(key=key))
         win_inspect.set_default_size(600, 400)
         win_inspect.set_transient_for(self.window)
         
@@ -643,7 +697,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
         if self.target_path == self.master_file:
             self.data_source = out
         self.data_target = out
-        self.show_message("OK", "Saved successfully!")
+        self.show_message(self.ui.get("title_ok", "OK"), self.ui.get("msg_saved_successfully", "Saved successfully!"))
 
     def _save_json(self, path, data):
         with open(path, 'w', encoding='utf-8') as f:
