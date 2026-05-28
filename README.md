@@ -1,12 +1,12 @@
 # 🌍 Universal i18n Commander (UniC)
 
-**Universal i18n Commander** is a lightweight, portable localization manager designed for JSON-based projects. It streamlines the translation process and helps eliminate "dead" or redundant keys in your codebase.
+**Universal i18n Commander** is a lightweight localization manager for JSON-based projects. It streamlines translation maintenance, detects unused keys, and helps keep your localization files synchronized with source code.
 
 ### 🚀 Why UniC?
 
-- **Portable:** A single script with zero external dependencies (uses Python's standard library).
-- **Code-Aware:** Scans your source code in real-time to show which keys are actually in use.
-- **JSON-Native UI:** The application's interface is localized via its own JSON files.
+- **GTK4 UI:** The current stable release uses GTK4 via PyGObject for a modern desktop interface.
+- **Code-Aware:** Scans your source code in real time to show which keys are actually in use.
+- **JSON-Native UI:** The application's interface is localized via its own JSON resource files.
 
 ### ✨ Key Features
 
@@ -18,9 +18,25 @@
 - 📋 **Click-to-Inspect:** Copy keys instantly and see their locations in the code.
 - 🔄 **Dynamic UI Language:** Change the interface language on the fly.
 
+### 🧩 Requirements
+
+- Python 3.10+ (recommended 3.12)
+- GTK 4 runtime
+- PyGObject bindings for GTK4 (`python3-gi` / `PyGObject`)
+
 ### 🛠 Installation & Usage
 
-1. Download the latest version from the **Releases** section (portable) or clone the repo.
-2. If running from source:
+1. Clone the repository or download the latest version from the **Releases** section.
+2. Install GTK4 and PyGObject on your system. For example on Debian/Ubuntu:
+   ```bash
+   sudo apt install python3-gi gir1.2-gtk-4.0
+   ```
+3. Run from source:
    ```bash
    python3 src/UniC.py
+   ```
+
+### ℹ️ Notes
+
+- The GTK4 UI depends on `src/internal_lang/en.json` as an internal UI language resource.
+- Stability tests are included in `tests/test_scan.py` and verify key scanning plus propagation behavior.
