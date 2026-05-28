@@ -1,0 +1,18 @@
+{
+    "btn_project": "\ud83d\udcc1 Project Settings",
+    "btn_save": "\ud83d\udcbe SAVE",
+    "btn_scan": "\ud83d\udd0d SCAN CODE",
+    "lbl_sort": "Sort by:",
+    "lbl_legend": "Legend:",
+    "lbl_ok": "\u25a0 OK",
+    "lbl_dup": "\u25a0 DUP",
+    "lbl_ghost": "\u25a0 GHOST",
+    "col_key": "SYSTEM KEY",
+    "col_source": "SOURCE (MASTER)",
+    "col_trans": "TRANSLATION",
+    "msg_restart": "Restart app to apply changes.",
+    "lbl_ui_lang": "UI Lang:",
+    "win_select_title": "Select Target",
+    "btn_load": "Load Selected",
+    "btn_create_new": "Create New"
+}
