@@ -1,5 +1,7 @@
 # 🌍 Universal i18n Commander (UniC)
 
+![Universal i18n Commander screenshot](screenshots/UniC.png)
+
 **Universal i18n Commander** is a lightweight localization manager for JSON-based projects. It streamlines translation maintenance, detects unused keys, and helps keep your localization files synchronized with source code.
 
 ### 🚀 Why UniC?
