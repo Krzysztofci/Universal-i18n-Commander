@@ -1,0 +1,8 @@
+{
+  "id": "py-ttk",
+  "name": "Python Tkinter/TTK Legacy",
+  "description": "Skanuje starsze klucze typu _(\"klucz\") lub trans_dict[\"klucz\"]",
+  "file_extensions": [".py"],
+  "pattern": "(?:_\\(|trans_dict\\[\\s*)[\"']([^\"']+)[\"']",
+  "capture_group": 1
+}

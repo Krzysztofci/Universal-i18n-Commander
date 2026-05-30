@@ -8,13 +8,24 @@ import locale
 import re
 
 import gi
-gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk, Gio, GLib
+try:
+    gi.require_version('Gtk', '4.0')
+    from gi.repository import Gtk, Gio, GLib
+except ValueError:
+    print("Warning: Gtk 4.0 is not installed on this system. Running plugin definition validation mode only.")
+    # Fallback to mock Gtk classes if imported in non-GUI systems, so the script parses fine
+    class GtkFallback:
+        def __getattr__(self, name):
+            return lambda *args, **kwargs: None
+    Gtk = GtkFallback()
+    Gio = GtkFallback()
+    GLib = GtkFallback()
 
 class UniversalI18nManagerGTK(Gtk.Application):
     def __init__(self):
         super().__init__(application_id="com.universal.i18n.commander")
-        self.config_file = "i18n_commander_config.ini"
+        self.config_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "i18n_commander_config.ini")
+        self.plugins_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "i18n_plugins.json")
         self.config = configparser.ConfigParser()
         
         self.data_source = {}
@@ -25,8 +36,13 @@ class UniversalI18nManagerGTK(Gtk.Application):
         self.entries = {}
         self.sort_mode = "key"
         
+        # System wtyczek
+        self.plugins = []
+        self.active_plugin_index = 0
+        
         self._load_settings()
         self._init_internal_lang()
+        self._load_plugins()
 
     def _load_settings(self):
         if os.path.exists(self.config_file):
@@ -34,12 +50,72 @@ class UniversalI18nManagerGTK(Gtk.Application):
         if 'PROJ' not in self.config:
             self.config['PROJ'] = {
                 'master_file': '', 'scripts_dir': '', 
-                'extensions': '.py,.js,.html', 'ui_lang': 'auto'
+                'extensions': '.py,.js,.html', 'ui_lang': 'auto',
+                'active_plugin': 'py_gtk4'
             }
         self.master_file = self.config['PROJ'].get('master_file', '')
         self.scripts_dir = self.config['PROJ'].get('scripts_dir', '')
         ext_raw = self.config['PROJ'].get('extensions', '.py,.js,.html')
         self.extensions = [ex.strip() for ex in ext_raw.split(',') if ex.strip()]
+        self.config_active_plugin = self.config['PROJ'].get('active_plugin', 'py_gtk4')
+
+    def _load_plugins(self):
+        """Wczytuje system wtyczek wyszukiwania z pliku JSON. Tworzy domyślne wtyczki jeśli plik nie istnieje."""
+        default_plugins = [
+            {
+                "id": "py_gtk4",
+                "name": "PyGTK4 (self.ui.get / self._t)",
+                "description": "Dopasowuje odwołania w interfejsie GTK4: self.ui.get(...) oraz self._t(...)",
+                "pattern": r'(?:self\.ui\.get|self\._t)\(\s*["\']([^"\']+)["\']',
+                "example": "self.ui.get(\"key_name\")"
+            },
+            {
+                "id": "py_ttk",
+                "name": "Python Tkinter/TTK (_ / trans_dict)",
+                "description": "Klasyczne systemy tłumaczeń Tkinter: _(...) lub trans_dict[\"...\"]",
+                "pattern": r'(?:_\(|trans_dict\[\s*)["\']([^"\']+)["\']',
+                "example": "_(\"key_name\") lub trans_dict[\"key\"]"
+            },
+            {
+                "id": "react_i18n",
+                "name": "React-i18next (t(\"key\"))",
+                "description": "Skanowanie projektów webowych React i18next z funkcją t(...)",
+                "pattern": r'\bt\(\s*["\']([^"\']+)["\']',
+                "example": "t(\"key_name\")"
+            },
+            {
+                "id": "vue_html",
+                "name": "Vue / Mustache expressions ($t)",
+                "description": "Dopasowania szablonowe {{ $t('key') }}",
+                "pattern": r'\{\{\s*\$t\(\s*["\']([^"\']+)["\']\s*\)\s*\}\}',
+                "example": "{{ $t(\"key\") }}"
+            }
+        ]
+
+        if os.path.exists(self.plugins_file):
+            try:
+                with open(self.plugins_file, 'r', encoding='utf-8') as f:
+                    self.plugins = json.load(f)
+            except Exception as e:
+                print(f"Błąd ładowania wtyczek z JSON: {e}. Przywracanie domyślnych.")
+                self.plugins = default_plugins
+        else:
+            self.plugins = default_plugins
+            self._save_plugins()
+
+        # Znajdź indeks wybranej wtyczki
+        self.active_plugin_index = 0
+        for idx, plugin in enumerate(self.plugins):
+            if plugin.get('id') == self.config_active_plugin:
+                self.active_plugin_index = idx
+                break
+
+    def _save_plugins(self):
+        try:
+            with open(self.plugins_file, 'w', encoding='utf-8') as f:
+                json.dump(self.plugins, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"Błąd zapisu wtyczek: {e}")
 
     def _init_internal_lang(self):
         base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -99,7 +175,9 @@ class UniversalI18nManagerGTK(Gtk.Application):
             "win_select_master": "Select MASTER JSON",
             "win_select_source": "Select Source Folder",
             "lbl_editing": "Editing: {name}{source_suffix}",
-            "lbl_source_suffix": " (source)"
+            "lbl_source_suffix": " (source)",
+            "lbl_plugin": "Active Plugin:",
+            "btn_edit_plugins": "⚙️ Manage Scanner Plugins"
         }
         
         def _t(key, fallback=None):
@@ -131,26 +209,55 @@ class UniversalI18nManagerGTK(Gtk.Application):
             self.ui = self.default_en
 
     def do_activate(self):
+        if 'GtkFallback' in str(type(Gtk)):
+            print("\n========================================================")
+            print("ERROR: Cannot open window since Gtk 4.0 library is missing.")
+            print("Configure your Python/virtualenv environment to see the GUI.")
+            print("Registered regex plugins list:")
+            for p in self.plugins:
+                print(f" - [{p['id']}] {p['name']}: {p['pattern']}")
+            print("========================================================\n")
+            return
+
         self.window = Gtk.ApplicationWindow(application=self)
-        self.window.set_title("Universal i18n Commander v4.0 (GTK)")
+        self.window.set_title("Universal i18n Commander v4.1 (GTK)")
         self.window.set_default_size(1300, 850)
 
         # Górny pasek
         header = Gtk.HeaderBar()
         self.window.set_titlebar(header)
 
-        btn_save = Gtk.Button(label=self.ui.get("btn_save", "SAVE"))
+        btn_save = Gtk.Button(label=self._t("btn_save", "SAVE"))
         btn_save.add_css_class("suggested-action")  
         btn_save.connect("clicked", self.save_data)
         header.pack_start(btn_save)
 
-        btn_scan = Gtk.Button(label=self.ui.get("btn_scan", "SCAN"))
+        btn_scan = Gtk.Button(label=self._t("btn_scan", "SCAN CODE"))
         btn_scan.connect("clicked", self.scan_all_keys)
         header.pack_start(btn_scan)
 
+        # Kontrolka wyboru Aktywnej Wtyczki Skanującej (Plugin)
+        plugin_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+        plugin_box.set_margin_start(10)
+        plugin_box.set_margin_end(10)
+        plugin_box.append(Gtk.Label(label=self._t("lbl_plugin", "Scanner Plugin:")))
+        
+        plugin_names = [p['name'] for p in self.plugins]
+        self.plugin_dropdown = Gtk.DropDown.new_from_strings(plugin_names)
+        self.plugin_dropdown.set_selected(self.active_plugin_index)
+        self.plugin_dropdown.connect("notify::selected", self.on_search_plugin_change)
+        plugin_box.append(self.plugin_dropdown)
+        
+        btn_manage_plugins = Gtk.Button(label="⚙️")
+        btn_manage_plugins.set_tooltip_text("Zarządzaj wtyczkami / regex")
+        btn_manage_plugins.connect("clicked", self.on_manage_plugins_clicked)
+        plugin_box.append(btn_manage_plugins)
+        
+        header.pack_start(plugin_box)
+
         # Język UI
         lang_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
-        lang_box.append(Gtk.Label(label=self.ui.get("lbl_ui_lang", "UI:")))
+        lang_box.append(Gtk.Label(label=self._t("lbl_ui_lang", "UI:")))
         self.lang_dropdown = Gtk.DropDown.new_from_strings(self.available_langs)
         try:
             idx = self.available_langs.index(self.current_lang_code)
@@ -164,7 +271,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
         main_layout = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
         self.window.set_child(main_layout)
 
-        # --- LEWY PANEL (Używamy Gtk.Stack do przełączania między Formularzem a Listą Języków) ---
+        # --- LEWY PANEL ---
         self.sidebar_stack = Gtk.Stack()
         self.sidebar_stack.set_size_request(300, -1)
         self.sidebar_stack.set_margin_top(10)
@@ -175,29 +282,29 @@ class UniversalI18nManagerGTK(Gtk.Application):
         # 1. WIDOK FORMULARZA (Gdy projekt nie jest ustawiony)
         form_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         
-        lbl_setup = Gtk.Label(label=self.ui.get("lbl_project_configuration", "⚙️ Project Configuration"), xalign=0)
-        lbl_setup.set_markup(f'<span weight="bold" size="large">{self.ui.get("lbl_project_setup", "⚙️ Project Setup")}</span>')
+        lbl_setup = Gtk.Label(label=self._t("lbl_project_configuration", "⚙️ Project Configuration"), xalign=0)
+        lbl_setup.set_markup(f'<span weight="bold" size="large">{self._t("lbl_project_setup", "⚙️ Project Setup")}</span>')
         form_box.append(lbl_setup)
 
-        form_box.append(Gtk.Label(label=self.ui.get("lbl_master_json_file", "Master JSON File:"), xalign=0))
+        form_box.append(Gtk.Label(label=self._t("lbl_master_json_file", "Master JSON File:"), xalign=0))
         self.ent_master_path = Gtk.Entry(text=self.master_file)
         form_box.append(self.ent_master_path)
-        btn_browse_master = Gtk.Button(label=self.ui.get("btn_browse_file", "Browse File..."))
+        btn_browse_master = Gtk.Button(label=self._t("btn_browse_file", "Browse File..."))
         btn_browse_master.connect("clicked", self.on_browse_master)
         form_box.append(btn_browse_master)
 
-        form_box.append(Gtk.Label(label=self.ui.get("lbl_source_code_directory", "Source Code Directory:"), xalign=0))
+        form_box.append(Gtk.Label(label=self._t("lbl_source_code_directory", "Source Code Directory:"), xalign=0))
         self.ent_src_path = Gtk.Entry(text=self.scripts_dir)
         form_box.append(self.ent_src_path)
-        btn_browse_src = Gtk.Button(label=self.ui.get("btn_browse_folder", "Browse Folder..."))
+        btn_browse_src = Gtk.Button(label=self._t("btn_browse_folder", "Browse Folder..."))
         btn_browse_src.connect("clicked", self.on_browse_src)
         form_box.append(btn_browse_src)
 
-        form_box.append(Gtk.Label(label=self.ui.get("lbl_extensions", "Extensions (comma separated):"), xalign=0))
+        form_box.append(Gtk.Label(label=self._t("lbl_extensions", "Extensions (comma separated):"), xalign=0))
         self.ent_extensions = Gtk.Entry(text=",".join(self.extensions))
         form_box.append(self.ent_extensions)
 
-        btn_apply_project = Gtk.Button(label=self.ui.get("btn_apply_project", "🚀 Load & Initialize Project"))
+        btn_apply_project = Gtk.Button(label=self._t("btn_apply_project", "🚀 Load & Initialize Project"))
         btn_apply_project.add_css_class("suggested-action")
         btn_apply_project.connect("clicked", self.on_apply_project_form)
         form_box.append(btn_apply_project)
@@ -206,8 +313,8 @@ class UniversalI18nManagerGTK(Gtk.Application):
 
         # 2. WIDOK LISTY (Gdy projekt jest poprawnie wczytany)
         list_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        lbl_sidebar = Gtk.Label(label=self.ui.get("lbl_target_translations", "📄 Target Translations"), xalign=0)
-        lbl_sidebar.set_markup(f'<span weight="bold">{self.ui.get("lbl_target_translations", "📄 Target Translations")}</span>')
+        lbl_sidebar = Gtk.Label(label=self._t("lbl_target_translations", "📄 Target Translations"), xalign=0)
+        lbl_sidebar.set_markup(f'<span weight="bold">{self._t("lbl_target_translations", "📄 Target Translations")}</span>')
         list_box.append(lbl_sidebar)
 
         self.source_version_label = Gtk.Label(label="", xalign=0)
@@ -225,11 +332,11 @@ class UniversalI18nManagerGTK(Gtk.Application):
         list_box.append(scroll_sidebar)
 
         action_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
-        btn_new_target = Gtk.Button(label=self.ui.get("btn_new_lang", "➕ New Lang"))
+        btn_new_target = Gtk.Button(label=self._t("btn_new_lang", "➕ New Lang"))
         btn_new_target.connect("clicked", lambda b: self._create_new_target())
         action_buttons.append(btn_new_target)
 
-        btn_edit_config = Gtk.Button(label=self.ui.get("btn_change_config", "⚙️ Change Config"))
+        btn_edit_config = Gtk.Button(label=self._t("btn_change_config", "⚙️ Change Config"))
         btn_edit_config.connect("clicked", lambda b: self.sidebar_stack.set_visible_child_name("form"))
         action_buttons.append(btn_edit_config)
         list_box.append(action_buttons)
@@ -253,33 +360,33 @@ class UniversalI18nManagerGTK(Gtk.Application):
         right_panel.append(filter_bar)
 
         sort_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
-        sort_box.append(Gtk.Label(label=self.ui.get("lbl_sort", "Sort:")))
+        sort_box.append(Gtk.Label(label=self._t("lbl_sort", "Sort:")))
         self.sort_dropdown = Gtk.DropDown.new_from_strings(["Key", "Source", "Target"])
         self.sort_dropdown.connect("notify::selected", self.on_sort_change)
         sort_box.append(self.sort_dropdown)
         filter_bar.append(sort_box)
 
-        btn_add_key = Gtk.Button(label=self.ui.get("btn_add_key", "➕ Add Key"))
+        btn_add_key = Gtk.Button(label=self._t("btn_add_key", "➕ Add Key"))
         btn_add_key.connect("clicked", self.on_add_key)
         filter_bar.append(btn_add_key)
 
-        btn_del_key = Gtk.Button(label=self.ui.get("btn_del_key", "🗑️ Del Key"))
+        btn_del_key = Gtk.Button(label=self._t("btn_del_key", "🗑️ Del Key"))
         btn_del_key.connect("clicked", self.on_del_key)
         filter_bar.append(btn_del_key)
 
         legend_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        legend_box.append(Gtk.Label(label=self.ui.get("lbl_legend", "Legend:")))
+        legend_box.append(Gtk.Label(label=self._t("lbl_legend", "Legend:")))
         
-        lbl_ok = Gtk.Label(); lbl_ok.set_markup(f'<span foreground="#2980b9" weight="bold">{self.ui.get("lbl_ok", "■ OK")}</span>')
-        lbl_dup = Gtk.Label(); lbl_dup.set_markup(f'<span foreground="#e74c3c" weight="bold">{self.ui.get("lbl_dup", "■ DUP")}</span>')
-        lbl_ghost = Gtk.Label(); lbl_ghost.set_markup(f'<span foreground="#e67e22" weight="bold">{self.ui.get("lbl_ghost", "■ GHOST")}</span>')
+        lbl_ok = Gtk.Label(); lbl_ok.set_markup(f'<span foreground="#2980b9" weight="bold">{self._t("lbl_ok", "■ OK")}</span>')
+        lbl_dup = Gtk.Label(); lbl_dup.set_markup(f'<span foreground="#e74c3c" weight="bold">{self._t("lbl_dup", "■ DUP")}</span>')
+        lbl_ghost = Gtk.Label(); lbl_ghost.set_markup(f'<span foreground="#e67e22" weight="bold">{self._t("lbl_ghost", "■ GHOST")}</span>')
         
         legend_box.append(lbl_ok)
         legend_box.append(lbl_dup)
         legend_box.append(lbl_ghost)
         filter_bar.append(legend_box)
 
-        self.status_label = Gtk.Label(label=self.ui.get("lbl_status_idle", "..."), xalign=1)
+        self.status_label = Gtk.Label(label="...", xalign=1)
         self.status_label.set_hexpand(True)
         filter_bar.append(self.status_label)
 
@@ -289,26 +396,239 @@ class UniversalI18nManagerGTK(Gtk.Application):
 
         self.window.present()
 
-        # Decyzja co wyświetlić na start
         if self.master_file and os.path.exists(self.master_file):
             self.load_project(auto=True)
         else:
             self.sidebar_stack.set_visible_child_name("form")
 
+    def on_search_plugin_change(self, dropdown, pspec):
+        self.active_plugin_index = dropdown.get_selected()
+        selected_plugin = self.plugins[self.active_plugin_index]
+        
+        # Zapisz wybraną wtyczkę w konfiguracji
+        self.config['PROJ']['active_plugin'] = selected_plugin['id']
+        with open(self.config_file, 'w') as f: 
+            self.config.write(f)
+            
+        print(f"Zmieniono aktywną wtyczkę skanującą na: {selected_plugin['name']}")
+        
+        # Jeśli jest wczytany projekt, od razu przeskanuj i zaktualizuj interfejs
+        if self.data_source:
+            self.scan_all_keys(None)
+
+    def on_manage_plugins_clicked(self, b):
+        """Otwiera okno dialogowe z możliwością dodawania, edycji i usuwania pluginów (regexów)"""
+
+        win = Gtk.Window(title="Ustawienia Wtyczek Skanowania")
+        win.set_default_size(600, 560)
+        win.set_transient_for(self.window)
+        win.set_modal(True)
+
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        main_box.set_margin_top(15); main_box.set_margin_bottom(15)
+        main_box.set_margin_start(15); main_box.set_margin_end(15)
+
+        # --- Nagłówek z trybem (Dodaj / Edytuj) ---
+        self._plugin_edit_id = None  # None = tryb dodawania; str = tryb edycji (id pluginu)
+
+        lbl_hdr = Gtk.Label()
+        lbl_hdr.set_markup('<span size="medium" weight="bold">Zarządzanie Wtyczkami Regular Expressions</span>')
+        main_box.append(lbl_hdr)
+
+        lbl_mode = Gtk.Label(xalign=0)
+        lbl_mode.set_markup('<span foreground="gray">Tryb: Dodawanie nowej wtyczki</span>')
+        main_box.append(lbl_mode)
+
+        # --- Formularz (wspólny dla dodawania i edycji) ---
+        form = Gtk.Grid()
+        form.set_row_spacing(6)
+        form.set_column_spacing(10)
+
+        form.attach(Gtk.Label(label="Identyfikator (slug):", xalign=0), 0, 0, 1, 1)
+        id_entry = Gtk.Entry(placeholder_text="np. custom_service")
+        id_entry.set_hexpand(True)
+        form.attach(id_entry, 1, 0, 1, 1)
+
+        form.attach(Gtk.Label(label="Nazwa wtyczki:", xalign=0), 0, 1, 1, 1)
+        name_entry = Gtk.Entry(placeholder_text="np. Custom Logger Scan")
+        name_entry.set_hexpand(True)
+        form.attach(name_entry, 1, 1, 1, 1)
+
+        form.attach(Gtk.Label(label="Wzorzec RegEx:", xalign=0), 0, 2, 1, 1)
+        pattern_entry = Gtk.Entry(placeholder_text=r'logger\.info\(\s*["\']([^"\']+)["\']')
+        pattern_entry.set_hexpand(True)
+        form.attach(pattern_entry, 1, 2, 1, 1)
+
+        form.attach(Gtk.Label(label="Opis działania:", xalign=0), 0, 3, 1, 1)
+        desc_entry = Gtk.Entry(placeholder_text="Dopasowuje klucze w loggerach")
+        desc_entry.set_hexpand(True)
+        form.attach(desc_entry, 1, 3, 1, 1)
+
+        main_box.append(form)
+
+        # --- Przyciski akcji formularza ---
+        btn_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+
+        btn_save = Gtk.Button(label="➕ Dodaj nową wtyczkę")
+        btn_save.add_css_class("suggested-action")
+        btn_row.append(btn_save)
+
+        btn_cancel_edit = Gtk.Button(label="✖ Anuluj edycję")
+        btn_cancel_edit.set_visible(False)
+        btn_row.append(btn_cancel_edit)
+
+        main_box.append(btn_row)
+
+        # --- Lista zarejestrowanych wtyczek ---
+        lbl_list = Gtk.Label(xalign=0)
+        lbl_list.set_markup('<span weight="bold">Zarejestrowane wtyczki:</span>')
+        main_box.append(lbl_list)
+
+        plugin_listbox = Gtk.ListBox()
+        plugin_listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+
+        sc = Gtk.ScrolledWindow()
+        sc.set_vexpand(True)
+        sc.set_child(plugin_listbox)
+        main_box.append(sc)
+
+        # --- Funkcje pomocnicze ---
+
+        def clear_form():
+            id_entry.set_text("")
+            name_entry.set_text("")
+            pattern_entry.set_text("")
+            desc_entry.set_text("")
+            id_entry.set_sensitive(True)
+            self._plugin_edit_id = None
+            btn_save.set_label("➕ Dodaj nową wtyczkę")
+            btn_cancel_edit.set_visible(False)
+            lbl_mode.set_markup('<span foreground="gray">Tryb: Dodawanie nowej wtyczki</span>')
+
+        def fill_form_for_edit(p):
+            id_entry.set_text(p.get('id', ''))
+            name_entry.set_text(p.get('name', ''))
+            pattern_entry.set_text(p.get('pattern', ''))
+            desc_entry.set_text(p.get('description', ''))
+            id_entry.set_sensitive(False)  # ID nie można zmienić przy edycji
+            self._plugin_edit_id = p['id']
+            btn_save.set_label("💾 Zapisz zmiany")
+            btn_cancel_edit.set_visible(True)
+            lbl_mode.set_markup(f'<span foreground="#e67e22" weight="bold">Tryb: Edycja wtyczki "{p["name"]}"</span>')
+
+        def rebuild_list():
+            while plugin_listbox.get_first_child():
+                plugin_listbox.remove(plugin_listbox.get_first_child())
+            for p in self.plugins:
+                row = Gtk.ListBoxRow()
+                hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+                hbox.set_margin_top(5); hbox.set_margin_bottom(5)
+                hbox.set_margin_start(6); hbox.set_margin_end(6)
+
+                p_lbl = Gtk.Label(xalign=0)
+                p_lbl.set_hexpand(True)
+                p_lbl.set_wrap(True)
+                p_lbl.set_max_width_chars(55)
+                p_lbl.set_markup(
+                    f"<b>{p['name']}</b>\n"
+                    f"<span size='small' foreground='gray'>{p['pattern']}</span>"
+                )
+                hbox.append(p_lbl)
+
+                # Przycisk edycji
+                btn_edit = Gtk.Button(label="✏️")
+                btn_edit.set_tooltip_text("Edytuj tę wtyczkę")
+                def edit_handler(btn, plugin=p):
+                    fill_form_for_edit(plugin)
+                btn_edit.connect("clicked", edit_handler)
+                hbox.append(btn_edit)
+
+                # Przycisk usuwania
+                btn_del = Gtk.Button(label="🗑️")
+                btn_del.set_tooltip_text("Usuń tę wtyczkę")
+                def delete_handler(btn, pid=p['id'], pname=p['name']):
+                    if len(self.plugins) <= 1:
+                        self.show_message("Błąd", "Nie możesz usunąć ostatniej wtyczki!")
+                        return
+                    self.plugins = [pi for pi in self.plugins if pi['id'] != pid]
+                    self._save_plugins()
+                    plugin_names = [pi['name'] for pi in self.plugins]
+                    self.plugin_dropdown.set_model(Gtk.StringList.new(plugin_names))
+                    self.plugin_dropdown.set_selected(0)
+                    if self._plugin_edit_id == pid:
+                        clear_form()
+                    rebuild_list()
+                btn_del.connect("clicked", delete_handler)
+                hbox.append(btn_del)
+
+                row.set_child(hbox)
+                plugin_listbox.append(row)
+
+        def on_save_clicked(btn):
+            p_id    = id_entry.get_text().strip()
+            p_name  = name_entry.get_text().strip()
+            p_pat   = pattern_entry.get_text().strip()
+            p_desc  = desc_entry.get_text().strip()
+
+            if not p_id or not p_name or not p_pat:
+                self.show_message("Błąd", "Identyfikator, nazwa oraz wzorzec nie mogą być puste.")
+                return
+            try:
+                re.compile(p_pat)
+            except re.error as e:
+                self.show_message("Błąd składni RegEx", f"Wzorzec zawiera błąd:\n{e}")
+                return
+
+            new_p = {
+                "id": p_id,
+                "name": p_name,
+                "description": p_desc if p_desc else p_name,
+                "pattern": p_pat,
+                "example": ""
+            }
+
+            editing = self._plugin_edit_id is not None
+            if editing:
+                # Zastąp istniejący wpis zachowując pozycję na liście
+                self.plugins = [new_p if pi['id'] == p_id else pi for pi in self.plugins]
+                msg = f"Zapisano zmiany w wtyczce '{p_name}'."
+            else:
+                # Nowa wtyczka — usuń ewentualny duplikat ID i dodaj na końcu
+                self.plugins = [pi for pi in self.plugins if pi['id'] != p_id]
+                self.plugins.append(new_p)
+                msg = f"Dodano wtyczke '{p_name}'."
+
+            self._save_plugins()
+
+            plugin_names = [pi['name'] for pi in self.plugins]
+            self.plugin_dropdown.set_model(Gtk.StringList.new(plugin_names))
+            last_idx = next((i for i, pi in enumerate(self.plugins) if pi['id'] == p_id), 0)
+            self.plugin_dropdown.set_selected(last_idx)
+
+            clear_form()
+            rebuild_list()
+            self.show_message("OK", msg)
+
+        btn_save.connect("clicked", on_save_clicked)
+        btn_cancel_edit.connect("clicked", lambda b: clear_form())
+
+        rebuild_list()
+        win.set_child(main_box)
+        win.present()
+
     def on_ui_lang_change(self, dropdown, pspec):
         selected_text = self.available_langs[dropdown.get_selected()]
         self.config['PROJ']['ui_lang'] = selected_text
         with open(self.config_file, 'w') as f: self.config.write(f)
-        self.show_message(self.ui.get("title_language", "Language"), self.ui.get("msg_restart", "Restart app to apply!"))
+        self.show_message(self._t("title_language", "Language"), self._t("msg_restart", "Restart app to apply!"))
 
     def on_sort_change(self, dropdown, pspec):
         mapping = ["key", "source", "target"]
         self.sort_mode = mapping[dropdown.get_selected()]
         self._fill_data()
 
-    # Obsługa przeglądania plików bezpośrednio z formularza bocznego
     def on_browse_master(self, btn):
-        dialog = Gtk.FileDialog(title=self.ui.get("win_select_master", "Select MASTER JSON"))
+        dialog = Gtk.FileDialog(title=self._t("win_select_master", "Select MASTER JSON"))
         file_filter = Gtk.FileFilter()
         file_filter.set_name("JSON files")
         file_filter.add_suffix("json")
@@ -324,7 +644,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
         except: pass
 
     def on_browse_src(self, btn):
-        dialog = Gtk.FileDialog(title=self.ui.get("win_select_source", "Select Source Folder"))
+        dialog = Gtk.FileDialog(title=self._t("win_select_source", "Select Source Folder"))
         dialog.select_folder(self.window, None, self._on_src_chosen)
 
     def _on_src_chosen(self, dialog, result):
@@ -333,14 +653,13 @@ class UniversalI18nManagerGTK(Gtk.Application):
             self.ent_src_path.set_text(gfile.get_path())
         except: pass
 
-    # Uruchomienie projektu po kliknięciu przycisku w formularzu
     def on_apply_project_form(self, btn):
         m_file = self.ent_master_path.get_text().strip()
         s_dir = self.ent_src_path.get_text().strip()
         exts = self.ent_extensions.get_text().strip()
 
         if not m_file or not os.path.exists(m_file):
-            self.show_message(self.ui.get("title_error", "Error"), self.ui.get("msg_invalid_master_path", "Master JSON file path is invalid or empty!"))
+            self.show_message(self._t("title_error", "Error"), self._t("msg_invalid_master_path", "Master JSON file path is invalid or empty!"))
             return
 
         self.config['PROJ'].update({'master_file': m_file, 'scripts_dir': s_dir, 'extensions': exts})
@@ -360,7 +679,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
             with open(self.master_file, 'r', encoding='utf-8') as f: 
                 self.data_source = json.load(f)
         except Exception as e:
-            self.show_message(self.ui.get("title_error", "Error"), self.ui.get("msg_invalid_master_json", "Invalid Master JSON: {error}").format(error=e))
+            self.show_message(self._t("title_error", "Error"), self._t("msg_invalid_master_json", "Invalid Master JSON: {error}").format(error=e))
             self.sidebar_stack.set_visible_child_name("form")
             return
         
@@ -371,15 +690,13 @@ class UniversalI18nManagerGTK(Gtk.Application):
             self.sidebar_listbox.remove(self.sidebar_listbox.get_first_child())
 
         self.source_version_label.set_markup(
-            f'<span foreground="#2980b9" weight="bold">{self.ui.get("lbl_source_header", "🌍 Source: {file}").format(file=os.path.basename(self.master_file))}</span>'
+            f'<span foreground="#2980b9" weight="bold">{self._t("lbl_source_header", "🌍 Source: {file}").format(file=os.path.basename(self.master_file))}</span>'
         )
 
         source_row = Gtk.ListBoxRow()
-        source_lbl = Gtk.Label(label=self.ui.get("lbl_source_list_item", "🌍 {file} (source)").format(file=os.path.basename(self.master_file)), xalign=0)
-        source_lbl.set_margin_top(5)
-        source_lbl.set_margin_bottom(5)
-        source_lbl.set_margin_start(5)
-        source_lbl.set_margin_end(5)
+        source_lbl = Gtk.Label(label=self._t("lbl_source_list_item", "🌍 {file} (source)").format(file=os.path.basename(self.master_file)), xalign=0)
+        source_lbl.set_margin_top(5); source_lbl.set_margin_bottom(5)
+        source_lbl.set_margin_start(5); source_lbl.set_margin_end(5)
         source_row.set_child(source_lbl)
         source_row.file_path = self.master_file
         source_row.is_source = True
@@ -387,17 +704,14 @@ class UniversalI18nManagerGTK(Gtk.Application):
 
         for t in targets:
             row = Gtk.ListBoxRow()
-            lbl = Gtk.Label(label=self.ui.get("lbl_target_list_item", "🌐 {name}").format(name=t), xalign=0)
-            lbl.set_margin_top(5)
-            lbl.set_margin_bottom(5)
-            lbl.set_margin_start(5)
-            lbl.set_margin_end(5)
+            lbl = Gtk.Label(label=self._t("lbl_target_list_item", "🌐 {name}").format(name=t), xalign=0)
+            lbl.set_margin_top(5); lbl.set_margin_bottom(5)
+            lbl.set_margin_start(5); lbl.set_margin_end(5)
             row.set_child(lbl)
             row.file_path = os.path.join(self.lang_dir, t)
             row.is_source = False
             self.sidebar_listbox.append(row)
 
-        # Przełącz widok na listę języków
         self.sidebar_stack.set_visible_child_name("list")
 
         if not targets:
@@ -415,10 +729,10 @@ class UniversalI18nManagerGTK(Gtk.Application):
 
     def on_add_key(self, btn):
         if self.active_path != self.master_file:
-            self.show_message(self.ui.get("title_info", "Info"), self.ui.get("msg_switch_to_source_add", "Switch to the source file before adding a new translation key."))
+            self.show_message(self._t("title_info", "Info"), self._t("msg_switch_to_source_add", "Przełącz się na plik źródłowy przed dodaniem!"))
             return
 
-        win = Gtk.Window(title=self.ui.get("title_add_key", "Add Key to Source"))
+        win = Gtk.Window(title=self._t("title_add_key", "Add Key to Source"))
         win.set_default_size(360, 180)
         win.set_transient_for(self.window)
         win.set_modal(True)
@@ -426,25 +740,25 @@ class UniversalI18nManagerGTK(Gtk.Application):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         box.set_margin_top(12); box.set_margin_bottom(12); box.set_margin_start(12); box.set_margin_end(12)
 
-        box.append(Gtk.Label(label=self.ui.get("lbl_new_key", "New key:")))
+        box.append(Gtk.Label(label=self._t("lbl_new_key", "New key:")))
         key_entry = Gtk.Entry()
-        key_entry.set_placeholder_text(self.ui.get("ph_new_key", "e.g. welcome_message"))
+        key_entry.set_placeholder_text(self._t("ph_new_key", "e.g. welcome_message"))
         box.append(key_entry)
 
-        box.append(Gtk.Label(label=self.ui.get("lbl_source_value", "Source value:")))
+        box.append(Gtk.Label(label=self._t("lbl_source_value", "Source value:")))
         value_entry = Gtk.Entry()
-        value_entry.set_placeholder_text(self.ui.get("ph_source_value", "e.g. Welcome!"))
+        value_entry.set_placeholder_text(self._t("ph_source_value", "e.g. Welcome!"))
         box.append(value_entry)
 
-        btn_create = Gtk.Button(label=self.ui.get("btn_create_key", "Create Key"))
+        btn_create = Gtk.Button(label=self._t("btn_create_key", "Create Key"))
         def on_create_clicked(button):
             new_key = key_entry.get_text().strip()
             source_value = value_entry.get_text().strip()
             if not new_key:
-                self.show_message(self.ui.get("title_error", "Error"), self.ui.get("msg_key_cannot_be_empty", "Key cannot be empty."))
+                self.show_message(self._t("title_error", "Error"), self._t("msg_key_cannot_be_empty", "Key cannot be empty."))
                 return
             if new_key in self.data_source:
-                self.show_message(self.ui.get("title_error", "Error"), self.ui.get("msg_key_already_exists", "This key already exists in the source file."))
+                self.show_message(self._t("title_error", "Error"), self._t("msg_key_already_exists", "This key already exists in the source file."))
                 return
 
             self.data_source[new_key] = source_value
@@ -461,10 +775,10 @@ class UniversalI18nManagerGTK(Gtk.Application):
 
     def on_del_key(self, btn):
         if self.active_path != self.master_file:
-            self.show_message(self.ui.get("title_info", "Info"), self.ui.get("msg_switch_to_source_delete", "Switch to the source file before deleting a key."))
+            self.show_message(self._t("title_info", "Info"), self._t("msg_switch_to_source_delete", "Switch to the source file before deleting a key."))
             return
 
-        win = Gtk.Window(title=self.ui.get("title_delete_key", "Delete Source Key"))
+        win = Gtk.Window(title=self._t("title_delete_key", "Delete Source Key"))
         win.set_default_size(360, 140)
         win.set_transient_for(self.window)
         win.set_modal(True)
@@ -472,17 +786,19 @@ class UniversalI18nManagerGTK(Gtk.Application):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         box.set_margin_top(12); box.set_margin_bottom(12); box.set_margin_start(12); box.set_margin_end(12)
 
-        box.append(Gtk.Label(label=self.ui.get("lbl_key_to_delete", "Key to delete:")))
+        box.append(Gtk.Label(label=self._t("lbl_key_to_delete", "Key to delete:")))
         key_entry = Gtk.Entry()
-        key_entry.set_placeholder_text(self.ui.get("ph_delete_key", "e.g. obsolete_message"))
+        key_entry.set_placeholder_text(self._t("ph_delete_key", "e.g. obsolete_message"))
         box.append(key_entry)
 
-        btn_delete = Gtk.Button(label=self.ui.get("btn_delete_key", "Delete Key"))
+        btn_delete = Gtk.Button(label=self._t("btn_delete_key", "Delete Key"))
         def on_delete_clicked(button):
             key_to_delete = key_entry.get_text().strip()
             if not key_to_delete:
-                self.show_message(self.ui.get("title_error", "Error"), self.ui.get("msg_key_cannot_be_empty", "Key cannot be empty."))
-                self.show_message(self.ui.get("title_error", "Error"), self.ui.get("msg_key_not_found", "Key not found in source file."))
+                self.show_message(self._t("title_error", "Error"), self._t("msg_key_cannot_be_empty", "Key cannot be empty."))
+                return
+            if key_to_delete not in self.data_source:
+                self.show_message(self._t("title_error", "Error"), self._t("msg_key_not_found", "Key not found in source file."))
                 return
 
             self.data_source.pop(key_to_delete, None)
@@ -514,15 +830,15 @@ class UniversalI18nManagerGTK(Gtk.Application):
                 self._save_json(path, target_data)
 
     def _create_new_target(self):
-        win_input = Gtk.Window(title=self.ui.get("title_new_translation", "New Translation"))
+        win_input = Gtk.Window(title=self._t("title_new_translation", "New Translation"))
         win_input.set_default_size(300, 100)
         win_input.set_transient_for(self.window)
         win_input.set_modal(True)
         
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         box.set_margin_top(10); box.set_margin_bottom(10); box.set_margin_start(10); box.set_margin_end(10)
-        entry = Gtk.Entry(placeholder_text=self.ui.get("ph_new_translation", "e.g. pl"))
-        btn = Gtk.Button(label=self.ui.get("btn_create", "Create"))
+        entry = Gtk.Entry(placeholder_text=self._t("ph_new_translation", "e.g. pl"))
+        btn = Gtk.Button(label=self._t("btn_create", "Create"))
         
         def on_create_click(b):
             new_name = entry.get_text().strip()
@@ -549,8 +865,25 @@ class UniversalI18nManagerGTK(Gtk.Application):
         self._fill_data()
 
     def scan_all_keys(self, btn):
+        """Skanuje pliki źródłowe korzystając z dynamicznie wybranej wtyczki regex!"""
         if not self.scripts_dir: return
         self.usage_map = {k: False for k in self.data_source.keys() if k != "lang_name"}
+        
+        # Pobierz aktywną definicję wtyczki
+        active_plugin = self.plugins[self.active_plugin_index]
+        pattern_str = active_plugin.get('pattern', '')
+        
+        print(f"Rozpoczynanie skanowania wtyczką: {active_plugin['name']}. Szukam wzorca: {pattern_str}")
+        
+        try:
+            rx = re.compile(pattern_str)
+        except re.error as e:
+            self.show_message("Błąd wzorca wtyczki", f"Składnia RegEx w wybranej wtyczce jest niepoprawna:\n{e}")
+            return
+
+        scanned_keys_in_code = set()
+
+        # Pierwszy krok: Skanujemy pliki źródłowe w poszukiwaniu jakichkolwiek dopasowań wzorca wtyczki
         for root_dir, _, files in os.walk(self.scripts_dir):
             for file in files:
                 if file.endswith(".json") or not any(file.endswith(ex) for ex in self.extensions):
@@ -558,20 +891,25 @@ class UniversalI18nManagerGTK(Gtk.Application):
                 try:
                     with open(os.path.join(root_dir, file), 'r', encoding='utf-8', errors='ignore') as f:
                         content = f.read()
-                        for k in list(self.usage_map.keys()):
-                            if self.usage_map.get(k):
-                                continue
-                            # Prefer quoted matches ("key" or 'key') to avoid false positives.
-                            pat_quoted = r'["\']' + re.escape(k) + r'["\']'
-                            if re.search(pat_quoted, content):
-                                self.usage_map[k] = True
-                                continue
-                            # Fallback: match with non-word boundaries around key to reduce substring hits.
-                            pat_word = r'(?<![A-Za-z0-9_])' + re.escape(k) + r'(?![A-Za-z0-9_])'
-                            if re.search(pat_word, content):
-                                self.usage_map[k] = True
-                except:
+                        matches = rx.findall(content)
+                        for m in matches:
+                            if isinstance(m, tuple):
+                                # Jeśli regex ma wiele grup, bierzemy pierwszą (klucz)
+                                key = m[0].strip()
+                            else:
+                                key = m.strip()
+                            if key:
+                                scanned_keys_in_code.add(key)
+                except Exception as e:
+                    print(f"Pominięto plik {file}: {e}")
                     continue
+
+        # Drugi krok: Mapujemy wynik skanowania do naszych kluczy z pliku master JSON
+        for k in self.usage_map.keys():
+            if k in scanned_keys_in_code:
+                self.usage_map[k] = True
+
+        print(f"Skanowanie zakończone. Wykryto {len(scanned_keys_in_code)} kluczy w kodzie źródłowym.")
         self._fill_data()
 
     def _fill_data(self):
@@ -580,12 +918,12 @@ class UniversalI18nManagerGTK(Gtk.Application):
         
         active_name = os.path.basename(self.target_path) if self.target_path else 'None'
         self.status_label.set_text(
-            self.ui.get(
+            self._t(
                 "lbl_editing",
                 "Editing: {name}{source_suffix}"
             ).format(
                 name=active_name,
-                source_suffix=self.ui.get("lbl_source_suffix", " (source)") if self.target_path == self.master_file else ""
+                source_suffix=self._t("lbl_source_suffix", " (source)") if self.target_path == self.master_file else ""
             )
         )
         
@@ -595,7 +933,6 @@ class UniversalI18nManagerGTK(Gtk.Application):
         m = self.sort_mode
         items.sort(key=lambda x: x[m].lower())
         
-        # Count duplicate translation values in the current target (skip empty translations)
         counts = {}
         for item in items:
             t = item["target"].strip()
@@ -608,11 +945,11 @@ class UniversalI18nManagerGTK(Gtk.Application):
         grid.set_column_spacing(12)
         grid.set_margin_top(10); grid.set_margin_bottom(10); grid.set_margin_start(10); grid.set_margin_end(10)
 
-        h1 = Gtk.Label(label=self.ui.get("col_key", "KEY")); h1.add_css_class("bold")
-        h2 = Gtk.Label(label=self.ui.get("col_source", "SOURCE")); h2.add_css_class("bold")
-        trans_label = self.ui.get("col_trans", "TRANSLATION")
+        h1 = Gtk.Label(label=self._t("col_key", "KEY")); h1.add_css_class("bold")
+        h2 = Gtk.Label(label=self._t("col_source", "SOURCE")); h2.add_css_class("bold")
+        trans_label = self._t("col_trans", "TRANSLATION")
         if self.target_path == self.master_file:
-            trans_label = self.ui.get("col_source", "SOURCE")
+            trans_label = self._t("col_source", "SOURCE")
         h3 = Gtk.Label(label=trans_label); h3.add_css_class("bold")
         
         grid.attach(h1, 0, 0, 1, 1)
@@ -622,17 +959,16 @@ class UniversalI18nManagerGTK(Gtk.Application):
         self.entries = {}
         for i, item in enumerate(items, start=1):
             key = item["key"]
-            # Determine duplicate by checking repeated translation values in current target
             is_dup = False
             target_val = item["target"].strip()
             if target_val and counts.get(target_val.lower(), 0) > 1:
                 is_dup = True
 
-            color = "#2980b9"
+            color = "#2980b9" # OK (klucz używany)
             if self.usage_map and not self.usage_map.get(key, False):
-                color = "#e67e22"
+                color = "#e67e22" # GHOST (klucz nie został znaleziony przez aktywny regex)
             if is_dup:
-                color = "#e74c3c"
+                color = "#e74c3c" # DUP
 
             btn_key = Gtk.Button()
             lbl_btn = Gtk.Label()
@@ -672,7 +1008,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
                                         found.append(f"{file} (Line {i}): {line.strip()}")
                         except: continue
                         
-        win_inspect = Gtk.Window(title=self.ui.get("win_inspect_search", "Search: {key}").format(key=key))
+        win_inspect = Gtk.Window(title=self._t("win_inspect_search", "Search: {key}").format(key=key))
         win_inspect.set_default_size(600, 400)
         win_inspect.set_transient_for(self.window)
         
@@ -697,7 +1033,7 @@ class UniversalI18nManagerGTK(Gtk.Application):
         if self.target_path == self.master_file:
             self.data_source = out
         self.data_target = out
-        self.show_message(self.ui.get("title_ok", "OK"), self.ui.get("msg_saved_successfully", "Saved successfully!"))
+        self.show_message(self._t("title_ok", "OK"), self._t("msg_saved_successfully", "Saved successfully!"))
 
     def _save_json(self, path, data):
         with open(path, 'w', encoding='utf-8') as f:
@@ -726,3 +1062,4 @@ class UniversalI18nManagerGTK(Gtk.Application):
 if __name__ == "__main__":
     app = UniversalI18nManagerGTK()
     sys.exit(app.run(sys.argv))
+

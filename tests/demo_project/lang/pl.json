@@ -1,0 +1,21 @@
+{
+    "lang_name": "Polski",
+
+    "KEY_OK_DICT_GET":     "Używany przez dict.get()",
+    "KEY_OK_SELF_T":       "Używany przez self._t()",
+    "KEY_OK_UNDERSCORE":   "Używany przez _()",
+    "KEY_OK_T_FN":         "Używany przez t() [JS]",
+    "KEY_OK_DOLLAR_T":     "Używany przez $t() [Vue]",
+
+    "KEY_OK_SUBDIR":       "Używany w podkatalogu",
+    "KEY_OK_MULTILINE":    "Używany w wywołaniu wieloliniowym",
+    "KEY_OK_DOUBLE_QUOTE": "Używany z podwójnym cudzysłowem",
+    "KEY_OK_SINGLE_QUOTE": "Używany z pojedynczym cudzysłowem",
+
+    "KEY_DUP_A":           "DUPLIKAT — ta sama wartość",
+    "KEY_DUP_B":           "DUPLIKAT — ta sama wartość",
+
+    "KEY_GHOST_NEVER_USED":     "Ten klucz nigdy nie pojawia się w kodzie",
+    "KEY_GHOST_COMMENT_ONLY":   "Ten klucz jest tylko w komentarzu",
+    "KEY_GHOST_STRING_LITERAL": "Ten klucz jest tylko jako plain string"
+}

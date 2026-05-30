@@ -1,0 +1,21 @@
+{
+    "lang_name": "English",
+
+    "KEY_OK_DICT_GET":     "Used via dict.get()",
+    "KEY_OK_SELF_T":       "Used via self._t()",
+    "KEY_OK_UNDERSCORE":   "Used via _()",
+    "KEY_OK_T_FN":         "Used via t() [JS]",
+    "KEY_OK_DOLLAR_T":     "Used via $t() [Vue]",
+
+    "KEY_OK_SUBDIR":       "Used in a subdirectory file",
+    "KEY_OK_MULTILINE":    "Used in multiline call",
+    "KEY_OK_DOUBLE_QUOTE": "Used with double quotes",
+    "KEY_OK_SINGLE_QUOTE": "Used with single quotes",
+
+    "KEY_DUP_A":           "Duplicate value target",
+    "KEY_DUP_B":           "Duplicate value target",
+
+    "KEY_GHOST_NEVER_USED":     "This key exists in JSON but never appears in any source file",
+    "KEY_GHOST_COMMENT_ONLY":   "This key appears only inside a comment in source",
+    "KEY_GHOST_STRING_LITERAL": "This key appears as a plain string, not inside a translation call"
+}

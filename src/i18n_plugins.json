@@ -1,0 +1,44 @@
+[
+    {
+        "id": "py_all",
+        "name": "Python — all patterns (T.get / self._t / _() / gettext)",
+        "description": "Łapie wszystkie popularne konwencje tłumaczeń w Pythonie jednym skanem: T.get(), self.T.get(), self._t(), self.ui.get(), _() oraz gettext().",
+        "pattern": "(?:self\\._t|self\\.ui\\.get|self\\.T\\.get|\\bT\\.get|(?:^|[^\\w])_|(?:^|[^.\\w])gettext)\\(\\s*[\"']([^\"']+)[\"']",
+        "example": ""
+    },
+    {
+        "id": "dict_get",
+        "name": "Python — T.get(\"key\") / self.T.get(\"key\")",
+        "description": "Dopasowuje wywołania T.get(\"klucz\") i self.T.get(\"klucz\"). Typowe w projektach Python gdzie słownik tłumaczeń jest przekazywany jako T lub self.T.",
+        "pattern": "(?:\\bself\\.T|\\bT)\\.get\\(\\s*[\"']([^\"']+)[\"']",
+        "example": ""
+    },
+    {
+        "id": "self_t",
+        "name": "Python — self._t(\"key\") / self.ui.get(\"key\")",
+        "description": "Dopasowuje self._t(\"klucz\") i self.ui.get(\"klucz\"). Typowe w aplikacjach GTK4/Tkinter gdzie metoda tłumaczenia jest metodą klasy okna.",
+        "pattern": "(?:self\\._t|self\\.ui\\.get)\\(\\s*[\"']([^\"']+)[\"']",
+        "example": ""
+    },
+    {
+        "id": "underscore_fn",
+        "name": "Python — _(\"key\") / gettext(\"key\")",
+        "description": "Dopasowuje _(\"klucz\") i gettext(\"klucz\"). Standard GNU gettext w projektach Python. Uwaga: łapie też wywołania w komentarzach.",
+        "pattern": "(?:(?:^|[^.\\w])gettext|(?:^|[^\\w])_)\\(\\s*[\"']([^\"']+)[\"']",
+        "example": ""
+    },
+    {
+        "id": "t_fn",
+        "name": "JavaScript — t(\"key\") / i18n.t(\"key\") [React, i18next]",
+        "description": "Dopasowuje t(\"klucz\") i i18n.t(\"klucz\"). Standard React i18next. Nie łapie $t() z Vue.",
+        "pattern": "(?:\\bi18n\\.t|(?:^|[^a-zA-Z0-9_.$])t)\\(\\s*[\"']([^\"']+)[\"']",
+        "example": ""
+    },
+    {
+        "id": "dollar_t",
+        "name": "JavaScript — {{ $t(\"key\") }} [Vue, Mustache]",
+        "description": "Dopasowuje {{ $t('klucz') }} w szablonach Vue.js. Uwaga: łapie też wywołania w komentarzach HTML.",
+        "pattern": "\\{\\{\\s*\\$t\\(\\s*[\"']([^\"']+)[\"']\\s*\\)\\s*\\}\\}",
+        "example": ""
+    }
+]

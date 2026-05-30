@@ -1,0 +1,8 @@
+{
+  "id": "py-gtk4",
+  "name": "PyGTK4 Smart Scanner",
+  "description": "Przeszukuje wzorce self.ui.get(\"klucz\") i self._t(\"klucz\")",
+  "file_extensions": [".py"],
+  "pattern": "(?:self\\.ui\\.get|self\\._t)\\(\\s*[\"']([^\"']+)[\"']",
+  "capture_group": 1
+}

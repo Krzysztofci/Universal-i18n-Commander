@@ -3,3 +3,5 @@ venv/
 *.spec
 __pycache__/
 *.ini
+__pycache__/
+*.pyc
